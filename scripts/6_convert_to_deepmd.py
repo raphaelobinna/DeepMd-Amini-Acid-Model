@@ -168,6 +168,12 @@ def main():
         action="store_true",
         help="Don't split into train/val, just convert all data"
     )
+    parser.add_argument(
+        "--max-fragments",
+        type=int,
+        default=None,
+        help="Maximum number of fragments to process (default: all)"
+    )
     
     args = parser.parse_args()
     
@@ -194,7 +200,20 @@ def main():
         print("No ABACUS output directories with MD_dump found!")
         sys.exit(1)
     
-    print(f"Found {len(abacus_outputs)} ABACUS output directories")
+    total_found = len(abacus_outputs)
+    
+    # Limit to max_fragments if specified
+    if args.max_fragments is not None:
+        if args.max_fragments > 0:
+            abacus_outputs = abacus_outputs[:args.max_fragments]
+            print(f"Found {total_found} ABACUS output directories")
+            print(f"Processing first {len(abacus_outputs)} (limited by --max-fragments)")
+        else:
+            print("Error: --max-fragments must be greater than 0")
+            sys.exit(1)
+    else:
+        print(f"Found {len(abacus_outputs)} ABACUS output directories")
+    
     print()
     
     # Convert each output
