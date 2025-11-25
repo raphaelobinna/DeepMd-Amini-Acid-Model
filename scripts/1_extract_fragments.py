@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """
-Extract dipeptide fragments from a protein PDB file.
+Extract peptide fragments from a protein PDB file.
 
-This script extracts all consecutive residue pairs (dipeptides) from a PDB file
-and saves each as a separate PDB file.
+This script extracts all consecutive residue fragments of a specified length
+(e.g., dipeptides, tripeptides) from a PDB file and saves each as a separate PDB file.
 
 Usage:
-    python 1_extract_fragments.py --pdb_file protein.pdb --output_dir data/fragments
+    python 1_extract_fragments.py --pdb_file protein.pdb --output_dir data/fragments --fragment_length 2
 """
 
 import os
 import argparse
+import warnings
 from pathlib import Path
 from Bio.PDB import PDBIO, Atom, Chain, Model, PDBParser, Residue, Selection
+from Bio.PDB.PDBExceptions import PDBConstructionWarning
+
+# Suppress PDBConstructionWarning about element inference
+warnings.filterwarnings('ignore', category=PDBConstructionWarning)
 
 
 def create_atom_copy(atom):
@@ -29,16 +34,14 @@ def create_atom_copy(atom):
     return new_atom
 
 
-def save_dipeptide_fragment(res1, res2, fragment_index, output_dir="fragments"):
+def save_fragment(residues, fragment_index, output_dir="fragments"):
     """
-    Save a dipeptide fragment (two consecutive residues) as a PDB file.
+    Save a peptide fragment (N consecutive residues) as a PDB file.
     
     Parameters:
     -----------
-    res1 : BioPython Residue
-        First residue
-    res2 : BioPython Residue
-        Second residue
+    residues : list
+        List of BioPython Residue objects
     fragment_index : int
         Index for naming the fragment
     output_dir : str
@@ -46,12 +49,13 @@ def save_dipeptide_fragment(res1, res2, fragment_index, output_dir="fragments"):
     """
     os.makedirs(output_dir, exist_ok=True)
     
-    name_1 = res1.get_resname()
-    name_2 = res2.get_resname()
-    idx1 = res1.get_id()[1]
-    idx2 = res2.get_id()[1]
+    # Generate filename from residue names and indices
+    name_parts = []
+    for res in residues:
+        name_parts.append(f"{res.get_resname()}{res.get_id()[1]}")
+    name_str = "_".join(name_parts)
     
-    filename = f"{output_dir}/fragment_{fragment_index:03d}_{name_1}{idx1}_{name_2}{idx2}.pdb"
+    filename = f"{output_dir}/fragment_{fragment_index:03d}_{name_str}.pdb"
     
     new_model = Model.Model(0)
     new_chain = Chain.Chain('A')
@@ -64,8 +68,9 @@ def save_dipeptide_fragment(res1, res2, fragment_index, output_dir="fragments"):
             new_residue.add(new_atom)
         return new_residue
     
-    new_chain.add(clone_residue(res1))
-    new_chain.add(clone_residue(res2))
+    # Add all residues to the chain
+    for res in residues:
+        new_chain.add(clone_residue(res))
     
     new_model.add(new_chain)
     
@@ -76,9 +81,9 @@ def save_dipeptide_fragment(res1, res2, fragment_index, output_dir="fragments"):
     return filename
 
 
-def extract_fragments(pdb_file, output_dir="fragments"):
+def extract_fragments(pdb_file, output_dir="fragments", fragment_length=2):
     """
-    Extract all dipeptide fragments from a PDB file.
+    Extract all peptide fragments of specified length from a PDB file.
     
     Parameters:
     -----------
@@ -86,6 +91,8 @@ def extract_fragments(pdb_file, output_dir="fragments"):
         Input PDB file
     output_dir : str
         Output directory for fragments
+    fragment_length : int
+        Number of consecutive residues per fragment (default: 2 for dipeptides)
     
     Returns:
     --------
@@ -98,31 +105,37 @@ def extract_fragments(pdb_file, output_dir="fragments"):
     fragment_files = []
     fragment_index = 0
     
-    print(f"Extracting dipeptide fragments from {pdb_file}...")
+    fragment_type = {2: "dipeptide", 3: "tripeptide", 4: "tetrapeptide"}.get(
+        fragment_length, f"{fragment_length}-residue"
+    )
+    
+    print(f"Extracting {fragment_type} fragments (length={fragment_length}) from {pdb_file}...")
     print(f"Output directory: {output_dir}\n")
     
     for model in structure:
         for chain in model:
             residues = [res for res in chain.get_list() if res.get_id()[0] == ' ']
             
-            for i in range(len(residues) - 1):
-                res_1 = residues[i]
-                res_2 = residues[i + 1]
+            # Extract fragments of the specified length
+            for i in range(len(residues) - fragment_length + 1):
+                fragment_residues = residues[i:i + fragment_length]
                 
-                filename = save_dipeptide_fragment(res_1, res_2, fragment_index, output_dir)
+                filename = save_fragment(fragment_residues, fragment_index, output_dir)
                 fragment_files.append(filename)
                 
-                print(f"  [{fragment_index:03d}] {res_1.get_resname()}{res_1.get_id()[1]}-{res_2.get_resname()}{res_2.get_id()[1]} → {Path(filename).name}")
+                # Create display string
+                res_names = "-".join([f"{res.get_resname()}{res.get_id()[1]}" for res in fragment_residues])
+                print(f"  [{fragment_index:03d}] {res_names} → {Path(filename).name}")
                 
                 fragment_index += 1
     
-    print(f"\n✓ Extracted {len(fragment_files)} dipeptide fragments")
+    print(f"\n✓ Extracted {len(fragment_files)} {fragment_type} fragments")
     return fragment_files
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract dipeptide fragments from a protein PDB file"
+        description="Extract peptide fragments from a protein PDB file"
     )
     parser.add_argument(
         "--pdb_file",
@@ -136,6 +149,12 @@ def main():
         default="data/fragments",
         help="Output directory for fragments (default: data/fragments)"
     )
+    parser.add_argument(
+        "--fragment_length",
+        type=int,
+        default=2,
+        help="Number of consecutive residues per fragment (default: 2 for dipeptides, 3 for tripeptides, etc.)"
+    )
     
     args = parser.parse_args()
     
@@ -143,7 +162,11 @@ def main():
         print(f"Error: PDB file not found: {args.pdb_file}")
         return
     
-    extract_fragments(args.pdb_file, args.output_dir)
+    if args.fragment_length < 1:
+        print(f"Error: fragment_length must be at least 1, got {args.fragment_length}")
+        return
+    
+    extract_fragments(args.pdb_file, args.output_dir, args.fragment_length)
 
 
 if __name__ == "__main__":
