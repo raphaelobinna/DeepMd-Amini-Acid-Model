@@ -38,6 +38,7 @@ def generate_separate_conformations(
 ):
     """
     Generate conformations and save each in a separate PDB file.
+    Each fragment gets its own folder containing all its conformations.
     
     Parameters:
     -----------
@@ -59,6 +60,10 @@ def generate_separate_conformations(
     output_path.mkdir(parents=True, exist_ok=True)
     
     fragment_name = Path(pdb_file).stem
+    
+    # Create a folder for this fragment
+    fragment_dir = output_path / fragment_name
+    fragment_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"  Loading {Path(pdb_file).name}...")
     mol = load_pdb_file(pdb_file)
@@ -100,8 +105,8 @@ def generate_separate_conformations(
                 invalid_count += 1
                 continue
         
-        # Save valid conformation to separate file
-        output_file = output_path / f"{fragment_name}_conf_{conf_id:03d}.pdb"
+        # Save valid conformation to separate file in fragment's folder
+        output_file = fragment_dir / f"{fragment_name}_conf_{conf_id:03d}.pdb"
         writer = Chem.PDBWriter(str(output_file))
         writer.write(mol, confId=conf_id)
         writer.close()
