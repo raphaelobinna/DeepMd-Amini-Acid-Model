@@ -3,6 +3,12 @@
 
 set -e
 
+# If not already running under caffeinate, re-execute with caffeinate
+if [ -z "$CAFFEINATE_ACTIVE" ]; then
+    export CAFFEINATE_ACTIVE=1
+    exec caffeinate -i -d "$0" "$@"
+fi
+
 # Get the directory containing this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_SCRIPT="$SCRIPT_DIR/4_run_abacus_docker.sh"
@@ -10,19 +16,31 @@ DOCKER_SCRIPT="$SCRIPT_DIR/4_run_abacus_docker.sh"
 # Parse command line arguments
 BASE_DIR="${1:-data/abacus_inputs}"
 MAX_CONFORMATIONS="${2:-}"
+MPI_ARG="${3:-}"
+OMP_ARG="${4:-}"
 
-# Default number of MPI processes
-MPI_PROCS=${MPI_PROCS:-4}
+# Set MPI processes (argument > env var > default)
+if [ -n "$MPI_ARG" ]; then
+    export MPI_PROCS="$MPI_ARG"
+else
+    export MPI_PROCS=${MPI_PROCS:-4}
+fi
 
-# Default OpenMP threads
-OMP_THREADS=${OMP_NUM_THREADS:-1}
+# Set OpenMP threads (argument > env var > default)
+if [ -n "$OMP_ARG" ]; then
+    export OMP_NUM_THREADS="$OMP_ARG"
+    OMP_THREADS="$OMP_ARG"
+else
+    export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+    OMP_THREADS=${OMP_NUM_THREADS:-1}
+fi
 
 # Limit number of conformations if specified
 if [ -n "$MAX_CONFORMATIONS" ]; then
     if ! [[ "$MAX_CONFORMATIONS" =~ ^[0-9]+$ ]]; then
         echo "Error: MAX_CONFORMATIONS must be a number"
-        echo "Usage: $0 [base_directory] [max_conformations]"
-        echo "Example: $0 data/abacus_inputs 50"
+        echo "Usage: $0 [base_directory] [max_conformations] [mpi_procs] [omp_threads]"
+        echo "Example: $0 data/abacus_inputs 50 8 4"
         exit 1
     fi
 fi
@@ -30,8 +48,8 @@ fi
 # Check if base directory exists
 if [ ! -d "$BASE_DIR" ]; then
     echo "Error: Directory '$BASE_DIR' does not exist"
-    echo "Usage: $0 [base_directory] [max_conformations]"
-    echo "Example: $0 data/abacus_inputs 50"
+    echo "Usage: $0 [base_directory] [max_conformations] [mpi_procs] [omp_threads]"
+    echo "Example: $0 data/abacus_inputs 50 8 4"
     exit 1
 fi
 
@@ -78,6 +96,8 @@ SUCCESS=0
 FAILED=0
 
 echo "Found $TOTAL conformations to process"
+echo ""
+echo "Note: Running with caffeinate to prevent system sleep"
 echo ""
 
 # Run ABACUS on each conformation
