@@ -205,4 +205,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - DeePMD-kit development team
 - ABACUS development team
-- [Funding agency/institution acknowledgments]
+
