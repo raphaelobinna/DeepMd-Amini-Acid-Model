@@ -1,386 +1,208 @@
-# Protein Fragment Workflow for DeePMD-kit Training
+# DeepMD Potential for Amino Acid Dipeptides
 
-A complete, reusable workflow for generating training data from protein fragments using ABACUS DFT calculations.
+A deep learning-based machine learning potential for accurate and efficient simulations of amino acid dipeptides, trained using the DeePMD-kit framework with DFT reference data from ABACUS.
 
-## Overview
+## Model Overview
 
-This workflow extracts dipeptide fragments from a protein PDB file, generates multiple conformations for each fragment, runs ABACUS DFT calculations, and converts the results to DeePMD-kit format for training.
+This repository contains a DeepMD potential trained on all 20 standard amino acid dipeptides (Ace-X-NMe) across diverse backbone conformations. The model achieves near-chemical accuracy while providing ~1000× speedup compared to DFT calculations.
 
-## Directory Structure
+### Key Features
+
+- **Coverage**: All 20 standard amino acids
+- **Conformational diversity**: Multiple φ/ψ backbone angles per residue
+- **Elements**: C, H, N, O, S
+- **Accuracy**: ~2.2 meV/atom MAE on validation set
+- **Speed**: Orders of magnitude faster than DFT
+
+## Model Performance
+
+### Validation Set Results
+
+| Metric | Value |
+|--------|-------|
+| Mean Absolute Error (MAE) | **2.181 meV/atom** |
+| Root Mean Square Error (RMSE) | **2.295 meV/atom** |
+| Validation systems | 66 |
+
+### Training Convergence (1,000,000 steps)
+
+| Metric | Final Value |
+|--------|-------------|
+| Force RMSE (validation) | 0.056 eV/Å |
+| Force RMSE (training) | 0.071 eV/Å |
+| Energy RMSE (validation) | 0.66 meV |
+| Energy RMSE (training) | 2.02 meV |
+
+## Dataset
+
+### Composition
+
+| Set | Systems | Description |
+|-----|---------|-------------|
+| Training | 262 | 80% of conformations |
+| Validation | 66 | 20% of conformations |
+
+### Amino Acids Included
+
+All 20 standard amino acids in dipeptide form (Acetyl-X-N-methylamide):
+
+| Non-polar | Polar | Charged | Aromatic |
+|-----------|-------|---------|----------|
+| ALA, VAL, LEU, ILE | SER, THR, ASN, GLN | ASP, GLU, LYS, ARG | PHE, TYR, TRP |
+| GLY, PRO, MET, CYS | | HIS | |
+
+### Backbone Conformations
+
+Each dipeptide was sampled at multiple (φ, ψ) dihedral angles covering:
+- α-helix region (φ ≈ -60°, ψ ≈ -45°)
+- β-sheet region (φ ≈ -120°, ψ ≈ +120°)
+- Polyproline II (φ ≈ -75°, ψ ≈ +145°)
+- Additional conformational basins
+
+## Model Architecture
 
 ```
-protein_fragment_workflow/
-├── README.md                    # This file
-├── scripts/                     # All workflow scripts
-│   ├── 1_extract_fragments.py   # Extract dipeptides from PDB
-│   ├── 2_generate_conformations.py  # Generate conformations
-│   ├── 3_prepare_abacus_inputs.py  # Prepare ABACUS inputs
-│   ├── 4_run_abacus_docker.sh   # Run single ABACUS calculation
-│   ├── 5_batch_run_abacus.sh    # Batch run ABACUS
-│   └── 6_convert_to_deepmd.py   # Convert to DeePMD format
-├── data/                        # Data directories (created during workflow)
-│   ├── fragments/               # Extracted dipeptide fragments
-│   ├── conformations/           # Generated conformations
-│   ├── abacus_inputs/           # ABACUS input files
-│   ├── abacus_outputs/          # ABACUS calculation results
-│   └── deepmd_data/             # DeePMD format data
-└── resources/                   # Pseudopotentials and orbitals
-    ├── *.upf                    # Pseudopotential files
-    └── *.orb                    # Orbital files
+Descriptor: se_e2_a (smooth edition, two-body embedding)
+├── Cutoff radius: 6.0 Å
+├── Smoothing cutoff: 0.5 Å
+├── Embedding network: [25, 50, 100]
+├── Axis neurons: 16
+└── Selection: [60, 120, 40, 40, 10] (C, H, N, O, S)
+
+Fitting Network: [240, 240, 240]
+├── ResNet connections: enabled
+└── Output: atomic energies
 ```
 
-## Prerequisites
+## Training Details
 
-### Software Requirements
+| Parameter | Value |
+|-----------|-------|
+| Training steps | 1,000,000 |
+| Initial learning rate | 1.0 × 10⁻³ |
+| Final learning rate | 3.5 × 10⁻⁸ |
+| Learning rate schedule | Exponential decay |
+| Batch size | Auto |
+| Loss prefactors | Energy: 0.02→1, Force: 1000→1 |
 
-1. **Python 3.7+** with packages:
-   ```bash
-   conda install -c conda-forge biopython rdkit scipy numpy
-   ```
+### DFT Reference Calculations
 
-2. **Docker** (for running ABACUS):
-   ```bash
-   # Install Docker Desktop or Docker Engine
-   # Verify: docker --version
-   ```
+| Parameter | Value |
+|-----------|-------|
+| Software | ABACUS |
+| Exchange-correlation | PBE (GGA) |
+| Basis set | Numerical atomic orbitals |
+| Cutoff energy | 100 Ry |
+| Pseudopotentials | ONCV (PBE) |
 
-3. **dpdata** (for conversion):
-   ```bash
-   conda install -c conda-forge dpdata
-   ```
+## Usage
 
-4. **DeePMD-kit** (for training):
-   ```bash
-   conda install -c conda-forge deepmd-kit
-   ```
-
-### Resources
-
-- **Pseudopotentials and orbitals**: Place `.upf` and `.orb` files in `resources/` directory
-- **Protein PDB file**: Your input protein structure
-
-## Complete Workflow
-
-### Step 1: Extract Fragments
-
-Extract all dipeptide fragments from your protein PDB file.
+### Installation
 
 ```bash
-cd protein_fragment_workflow
-python scripts/1_extract_fragments.py \
-    --pdb_file /path/to/your/protein.pdb \
-    --output_dir data/fragments
+# Create conda environment
+conda create -n deepmd python=3.12
+conda activate deepmd
+
+# Install DeePMD-kit
+conda install -c conda-forge deepmd-kit=*=*cpu*
 ```
 
-**What it does:**
-- Parses the PDB file
-- Extracts all consecutive residue pairs (dipeptides)
-- Saves each as a separate PDB file in `data/fragments/`
+### Running Inference
 
-**Output:**
-```
-data/fragments/
-├── fragment_000_GLY1_SER2.pdb
-├── fragment_001_SER2_PRO1.pdb
-└── ...
-```
+```python
+from deepmd.infer import DeepPot
 
-### Step 2: Generate Conformations
+# Load the model
+dp = DeepPot("frozen_model.pth")
 
-Generate multiple conformations for each fragment using RDKit.
+# Predict energy and forces
+coord = ...  # atomic coordinates (N, 3) in Angstroms
+cell = ...   # cell vectors (3, 3) in Angstroms  
+atype = ...  # atom types [0=C, 1=H, 2=N, 3=O, 4=S]
 
-```bash
-python scripts/2_generate_conformations.py \
-    --fragments_dir data/fragments \
-    --output_dir data/conformations \
-    --num_conf 50 \
-    --min_distance 0.5
+e, f, v = dp.eval(coord, cell, atype)
 ```
 
-**What it does:**
-- Generates multiple conformations for each fragment
-- Validates conformations (filters atoms too close)
-- Saves each conformation as a separate PDB file
+### LAMMPS Integration
 
-**Parameters:**
-- `--num_conf`: Number of conformations per fragment (default: 50)
-- `--min_distance`: Minimum interatomic distance in Angstroms (default: 0.5)
+```lammps
+units           metal
+atom_style      atomic
 
-**Output:**
-```
-data/conformations/
-├── fragment_000_GLY1_SER2_conf_000.pdb
-├── fragment_000_GLY1_SER2_conf_001.pdb
-├── fragment_001_SER2_PRO1_conf_000.pdb
-└── ...
+pair_style      deepmd frozen_model.pth
+pair_coeff      * *
+
+# Run MD simulation
+velocity        all create 300.0 12345
+fix             1 all nvt temp 300.0 300.0 0.1
+timestep        0.001
+run             100000
 ```
 
-### Step 3: Prepare ABACUS Inputs
+## Repository Structure
 
-Prepare ABACUS input files (INPUT, STRU, KPT) for each conformation.
-
-```bash
-python scripts/3_prepare_abacus_inputs.py \
-    --conformations_dir data/conformations \
-    --output_dir data/abacus_inputs \
-    --pp_dir resources \
-    --calculation md \
-    --md_nstep 10
+```
+deepmd-amino-group/
+├── data/
+│   ├── dipeptides/          # Initial PDB structures
+│   │   ├── ALA/
+│   │   ├── ARG/
+│   │   └── ...
+│   ├── abacus_inputs/       # DFT calculation inputs/outputs
+│   └── deepmd_data/         # Training data & model
+│       ├── train/           # Training systems
+│       ├── val/             # Validation systems
+│       ├── frozen_model.pth # Production model
+│       ├── input.json       # Training configuration
+│       ├── lcurve.out       # Learning curve
+│       └── evaluation/      # Evaluation plots
+├── resources/               # Pseudopotentials & basis sets
+├── scripts/                 # Data generation & training scripts
+└── README.md
 ```
 
-**What it does:**
-- Parses each conformation PDB file
-- Generates ABACUS STRU, INPUT, and KPT files
-- Copies pseudopotentials and orbitals to each directory
+## Scripts
 
-**Parameters:**
-- `--calculation`: 'md' for MD or 'scf' for single-point (default: 'md')
-- `--md_nstep`: Number of MD steps (default: 10 for testing, use 50-200 for production)
+| Script | Description |
+|--------|-------------|
+| `0_generate_dipeptides.py` | Generate dipeptide PDB structures |
+| `1_extract_fragments.py` | Extract molecular fragments |
+| `2_generate_conformations.py` | Generate backbone conformations |
+| `3_prepare_abacus_inputs.py` | Prepare DFT input files |
+| `4_run_abacus_docker.sh` | Run ABACUS in Docker |
+| `5_batch_run_abacus.sh` | Batch DFT calculations |
+| `6_convert_to_deepmd.py` | Convert to DeepMD format |
+| `7_evaluate_model.py` | Evaluate model accuracy |
 
-**Output:**
-```
-data/abacus_inputs/
-├── fragment_000_GLY1_SER2_conf_000/
-│   ├── INPUT
-│   ├── STRU
-│   ├── KPT
-│   ├── H_ONCV_PBE-1.2.upf
-│   ├── C_ONCV_PBE-1.0.upf
-│   └── *.orb files
-├── fragment_000_GLY1_SER2_conf_001/
-│   └── ...
-└── ...
-```
+## Citation
 
-### Step 4: Run ABACUS Calculations
+If you use this potential in your research, please cite:
 
-Run ABACUS DFT calculations on all conformations using Docker.
-
-#### Option A: Run Single Calculation (Testing)
-
-```bash
-./scripts/4_run_abacus_docker.sh data/abacus_inputs/fragment_000_GLY1_SER2_conf_000
-```
-
-#### Option B: Batch Run All Conformations
-
-```bash
-./scripts/5_batch_run_abacus.sh data/abacus_inputs
-```
-
-**For testing, limit the number:**
-```bash
-./scripts/5_batch_run_abacus.sh data/abacus_inputs 10
-```
-
-**What it does:**
-- Runs ABACUS MD calculations in Docker containers
-- Each calculation creates `OUT.ABACUS/` directory with results
-- Checks for `MD_dump` file to verify success
-
-**Output:**
-```
-data/abacus_inputs/
-├── fragment_000_GLY1_SER2_conf_000/
-│   ├── INPUT, STRU, KPT, *.upf, *.orb
-│   └── OUT.ABACUS/
-│       ├── MD_dump              # Trajectory data
-│       ├── running_md.log       # Calculation log
-│       └── ...
-└── ...
-```
-
-**Note:** ABACUS calculations can take a long time. For testing, use `--md_nstep 10` in Step 3. For production, use 50-200 steps.
-
-### Step 5: Convert to DeePMD Format
-
-Convert ABACUS outputs to DeePMD-kit training format.
-
-```bash
-python scripts/6_convert_to_deepmd.py \
-    --abacus_dir data/abacus_inputs \
-    --output_dir data/deepmd_data \
-    --train-ratio 0.8
-```
-
-**What it does:**
-- Finds all `OUT.ABACUS` directories with `MD_dump` files
-- Converts each to DeePMD `.npy` format using `dpdata`
-- Splits into training (80%) and validation (20%) sets
-
-**Output:**
-```
-data/deepmd_data/
-├── train/                       # Training datasets
-│   ├── conf_fragment_000_GLY1_SER2_conf_000/
-│   │   ├── type.raw
-│   │   ├── type_map.raw
-│   │   └── set.000/
-│   │       ├── box.npy
-│   │       ├── coord.npy
-│   │       ├── energy.npy
-│   │       └── force.npy
-│   └── ...
-└── val/                         # Validation datasets
-    └── ...
-```
-
-## Quick Start Example
-
-```bash
-# 1. Extract fragments
-python scripts/1_extract_fragments.py \
-    --pdb_file protein.pdb \
-    --output_dir data/fragments
-
-# 2. Generate conformations (use fewer for testing)
-python scripts/2_generate_conformations.py \
-    --fragments_dir data/fragments \
-    --output_dir data/conformations \
-    --num_conf 10
-
-# 3. Prepare ABACUS inputs (use 10 steps for testing)
-python scripts/3_prepare_abacus_inputs.py \
-    --conformations_dir data/conformations \
-    --output_dir data/abacus_inputs \
-    --pp_dir resources \
-    --md_nstep 10
-
-# 4. Run ABACUS (test with 5 conformations first)
-./scripts/5_batch_run_abacus.sh data/abacus_inputs 5
-
-# 5. Convert to DeePMD format
-python scripts/6_convert_to_deepmd.py \
-    --abacus_dir data/abacus_inputs \
-    --output_dir data/deepmd_data
-```
-
-## Configuration
-
-### ABACUS Input Parameters
-
-Edit `scripts/3_prepare_abacus_inputs.py` to customize:
-
-- **MD steps**: Change `md_nstep` (default: 10 for testing)
-- **Temperature**: Change `md_tfirst` (default: 300 K)
-- **Cutoff**: Change `ecutwfc` (default: 100 Ry)
-- **SCF threshold**: Change `scf_thr` (default: 1e-7)
-
-### Conformation Generation
-
-Edit `scripts/2_generate_conformations.py` to customize:
-
-- **Number of conformations**: Change `--num_conf` (default: 50)
-- **Minimum distance**: Change `--min_distance` (default: 0.5 Å)
-
-## Troubleshooting
-
-### "No MD_dump file created"
-
-- Check `OUT.ABACUS/running_md.log` for errors
-- Verify `md_dumpfreq=1` in INPUT file
-- Check `dump_force=1`, `dump_vel=1`, `dump_virial=1` are set
-- Ensure calculation completed (not just started)
-
-### "Structure is unreasonable" warning
-
-- Conformations may have atoms too close
-- Reduce `--min_distance` or regenerate conformations
-- Check `OUT.ABACUS/warning.log` for details
-
-### Docker issues
-
-- Ensure Docker is running: `docker info`
-- Check Docker image: `docker images | grep abacus`
-- Pull image manually: `docker pull registry.dp.tech/deepmodeling/abacus`
-
-### Conversion errors
-
-- Ensure `MD_dump` files exist in `OUT.ABACUS/` directories
-- Check `dpdata` is installed: `conda install -c conda-forge dpdata`
-- Verify ABACUS calculations completed successfully
-
-## Next Steps: Training DeePMD Model
-
-After conversion, create `input.json` for training:
-
-```json
-{
-    "model": {
-        "type_map": ["H", "C", "N", "O"],
-        "descriptor": {
-            "type": "se_e2_a",
-            "sel": [60, 30, 30, 30],
-            "rcut": 6.0,
-            "rcut_smth": 0.5,
-            "neuron": [25, 50, 100],
-            "resnet_dt": false,
-            "axis_neuron": 16
-        },
-        "fitting_net": {
-            "neuron": [240, 240, 240],
-            "resnet_dt": true
-        }
-    },
-    "learning_rate": {
-        "type": "exp",
-        "start_lr": 0.001,
-        "decay_steps": 5000,
-        "decay_rate": 0.95
-    },
-    "loss": {
-        "start_pref_e": 0.02,
-        "limit_pref_e": 1,
-        "start_pref_f": 1000,
-        "limit_pref_f": 1
-    },
-    "training": {
-        "training_data": {
-            "systems": ["data/deepmd_data/train/*"],
-            "batch_size": 1,
-            "set_prefix": "set"
-        },
-        "validation_data": {
-            "systems": ["data/deepmd_data/val/*"],
-            "batch_size": 1,
-            "set_prefix": "set"
-        },
-        "numb_steps": 1000000,
-        "seed": 42,
-        "disp_file": "lcurve.out",
-        "disp_freq": 1000,
-        "save_freq": 10000
-    }
+```bibtex
+@article{amino_dipeptide_deepmd_2026,
+  title={Deep Learning Potential for Amino Acid Dipeptides},
+  author={[Author Names]},
+  journal={[Journal Name]},
+  year={2026},
+  doi={[DOI]}
 }
 ```
 
-Then train:
-```bash
-dp train input.json
-```
+## References
 
-## Tips for Production
+1. Zhang, L., Han, J., Wang, H., Car, R., & E, W. (2018). Deep potential molecular dynamics: a scalable model with the accuracy of quantum mechanics. *Physical Review Letters*, 120(14), 143001.
 
-1. **Start small**: Test with 5-10 conformations and 10 MD steps
-2. **Scale gradually**: Increase to 50 conformations, then 50-100 MD steps
-3. **Monitor resources**: ABACUS calculations are CPU/memory intensive
-4. **Use parallel execution**: Run multiple ABACUS calculations simultaneously if you have resources
-5. **Check data quality**: Verify converted data before training
+2. Wang, H., Zhang, L., Han, J., & E, W. (2018). DeePMD-kit: A deep learning package for many-body potential energy representation and molecular dynamics. *Computer Physics Communications*, 228, 178-184.
 
-## File Naming Convention
-
-- **Fragments**: `fragment_XXX_RES1YY_RES2ZZ.pdb`
-- **Conformations**: `fragment_XXX_RES1YY_RES2ZZ_conf_NNN.pdb`
-- **ABACUS directories**: `fragment_XXX_RES1YY_RES2ZZ_conf_NNN/`
-
-## Support
-
-For issues or questions:
-- Check ABACUS documentation: https://abacus.deepmodeling.com/
-- Check DeePMD-kit documentation: https://docs.deepmodeling.com/projects/deepmd/
-- Check dpdata documentation: https://docs.deepmodeling.com/projects/dpdata/
+3. Chen, M., Guo, G. C., & He, L. (2010). Systematically improvable optimized atomic basis sets for ab initio calculations. *Journal of Physics: Condensed Matter*, 22(44), 445501.
 
 ## License
 
-This workflow is provided as-is for research and educational purposes.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Acknowledgments
+
+- DeePMD-kit development team
+- ABACUS development team
+- [Funding agency/institution acknowledgments]

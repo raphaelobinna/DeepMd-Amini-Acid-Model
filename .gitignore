@@ -1,0 +1,67 @@
+# ========================================
+# DeepMD Amino Dipeptides - .gitignore
+# ========================================
+
+# Heavy data directories
+data/abacus_inputs/
+data/deepmd_data/train/
+data/deepmd_data/val/
+data/dipeptides/
+
+# Checkpoint files (large, keep only frozen model)
+data/deepmd_data/model.ckpt*.pt
+data/deepmd_data/checkpoint
+!data/deepmd_data/frozen_model.pth
+
+# Temporary and log files
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+env/
+.env/
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# DeePMD specific
+*.pb
+profiling/
+tensorboard/
+compress/
+
+# ABACUS output files (if any leaked)
+OUT.*/
+*.cif
+STRU_*
+running_*.log
+

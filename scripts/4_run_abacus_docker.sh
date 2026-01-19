@@ -1,6 +1,10 @@
 #!/bin/bash
 # Script to run ABACUS calculations using Docker
 # Based on: https://abacus.deepmodeling.com/en/latest/quick_start/easy_install.html#container-deployment
+#
+# Optimized for Mac Mini M4:
+#   - MPI_PROCS=8 (uses 8 of 10 cores on M4 base)
+#   - OMP_NUM_THREADS=1 (MPI scales better for ABACUS)
 
 set -e
 
@@ -8,10 +12,10 @@ set -e
 ABACUS_IMAGE="registry.dp.tech/deepmodeling/abacus"
 # Alternative: docker.io/deepmodeling/abacus (if the above doesn't work)
 
-# Default number of MPI processes
-MPI_PROCS=${MPI_PROCS:-4}
+# Default number of MPI processes (8 for Mac Mini M4)
+MPI_PROCS=${MPI_PROCS:-8}
 
-# Default OpenMP threads
+# Default OpenMP threads (1 recommended - MPI scales better)
 OMP_THREADS=${OMP_NUM_THREADS:-1}
 
 # Get the directory containing this script

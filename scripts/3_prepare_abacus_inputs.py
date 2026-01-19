@@ -41,7 +41,7 @@ ORB_FILES = {
     'C': 'C_gga_7au_100Ry_2s2p1d.orb',
     'N': 'N_gga_7au_100Ry_2s2p1d.orb',
     'O': 'O_gga_7au_100Ry_2s2p1d.orb',
-    'S': None,
+    'S': 'S_gga_7au_100Ry_2s2p1d.orb',
 }
 
 
@@ -92,7 +92,7 @@ def generate_stru_file(elements, coords, output_file, box_size=20.0):
         f.write("ATOMIC_SPECIES\n")
         for elem in unique_elements:
             mass = ATOMIC_MASSES.get(elem, 1.0)
-            pp_file = PP_FILES.get(elem, f"{elem}_ONCV_PBE-1.2.upf")
+            pp_file = PP_FILES.get(elem, f"{elem}_ONCV_PBE-1.0.upf")
             f.write(f"{elem:2s} {mass:6.2f} {pp_file}\n")
         f.write("\n")
         
@@ -254,32 +254,43 @@ def prepare_abacus_inputs(conformations_dir, output_dir, pp_dir=None, calculatio
         if i % 10 == 0 or i == len(pdb_files):
             print(f"[{i}/{len(pdb_files)}] Processing {conf_name}...")
         
-        # Parse PDB
+        # Parse PDB - get elements for THIS specific conformation
         elements, coords = parse_pdb(pdb_file)
         if not elements:
             continue
         
+        # Get unique elements for THIS conformation (not just first one!)
+        conf_unique_elements = get_unique_elements(elements)
+        conf_ntype = len(conf_unique_elements)
+        
         # Generate STRU file
         generate_stru_file(elements, coords, conf_dir / "STRU")
         
-        # Generate INPUT file (auto-detect restart if previous run exists)
-        generate_input_file(conf_dir / "INPUT", ntype, calculation, md_nstep)
+        # Generate INPUT file with correct ntype for this conformation
+        generate_input_file(conf_dir / "INPUT", conf_ntype, calculation, md_nstep)
         
         # Generate KPT file
         generate_kpt_file(conf_dir / "KPT")
         
-        # Copy pseudopotentials and orbitals
+        # Copy pseudopotentials and orbitals for THIS conformation's elements
         if pp_dir:
-            for element in unique_elements:
+            pp_path = Path(pp_dir)
+            for element in conf_unique_elements:
+                # Copy pseudopotential
                 if element in PP_FILES:
-                    src_pp = output_path / PP_FILES[element]
+                    src_pp = pp_path / PP_FILES[element]
                     if src_pp.exists():
                         shutil.copy2(src_pp, conf_dir / PP_FILES[element])
+                    else:
+                        print(f"  ⚠ Warning: PP file not found: {src_pp}")
                 
+                # Copy orbital file
                 if element in ORB_FILES and ORB_FILES[element]:
-                    src_orb = output_path / ORB_FILES[element]
+                    src_orb = pp_path / ORB_FILES[element]
                     if src_orb.exists():
                         shutil.copy2(src_orb, conf_dir / ORB_FILES[element])
+                    else:
+                        print(f"  ⚠ Warning: ORB file not found: {src_orb}")
         
         success_count += 1
     

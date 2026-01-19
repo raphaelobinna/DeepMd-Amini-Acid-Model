@@ -6,6 +6,7 @@ This script:
 1. Finds all ABACUS output directories (OUT.ABACUS)
 2. Converts them to DeePMD .npy format using dpdata
 3. Organizes data into training/validation sets
+4. Ensures consistent type_map across all datasets
 
 Usage:
     python 6_convert_to_deepmd.py --abacus_dir data/abacus_inputs --output_dir data/deepmd_data
@@ -24,6 +25,10 @@ except ImportError:
     print("Install it with: conda install -c conda-forge dpdata")
     sys.exit(1)
 
+# Unified type_map for all amino acid dipeptides (C, H, N, O, S)
+# Order matters - this will be used consistently across all datasets
+UNIFIED_TYPE_MAP = ["C", "H", "N", "O", "S"]
+
 
 def find_abacus_outputs(base_dir):
     """Find all ABACUS output directories."""
@@ -39,7 +44,7 @@ def find_abacus_outputs(base_dir):
     return sorted(outputs)
 
 
-def convert_abacus_to_deepmd(abacus_dir, output_dir):
+def convert_abacus_to_deepmd(abacus_dir, output_dir, type_map=None):
     """
     Convert a single ABACUS output directory to DeePMD format.
     
@@ -49,6 +54,8 @@ def convert_abacus_to_deepmd(abacus_dir, output_dir):
         Path to ABACUS OUT.ABACUS directory
     output_dir : Path
         Path to output directory for DeePMD data
+    type_map : list
+        Unified type_map to use for all datasets
     """
     try:
         # dpdata needs the parent directory (containing INPUT, STRU, etc.)
@@ -72,6 +79,26 @@ def convert_abacus_to_deepmd(abacus_dir, output_dir):
         if len(system) == 0:
             print(f"    ⚠ Warning: No frames found")
             return False
+        
+        # Apply unified type_map if provided
+        if type_map is not None:
+            # Get current atom types in the system
+            current_types = list(system.data['atom_names'])
+            
+            # Check all atoms are in unified type_map
+            for atom in current_types:
+                if atom not in type_map:
+                    print(f"    ✗ Error: Unknown atom type {atom} not in type_map")
+                    return False
+            
+            # Remap atom types to unified type_map indices
+            old_to_new = {atom: type_map.index(atom) for atom in current_types}
+            
+            # Update atom_types array
+            new_atom_types = np.array([old_to_new[current_types[t]] for t in system.data['atom_types']])
+            system.data['atom_types'] = new_atom_types
+            system.data['atom_names'] = type_map
+            system.data['atom_numbs'] = [list(new_atom_types).count(i) for i in range(len(type_map))]
         
         # Create output directory
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -222,11 +249,13 @@ def main():
     temp_output.mkdir(parents=True, exist_ok=True)
     
     print("Converting ABACUS outputs to DeePMD format...")
+    print(f"Using unified type_map: {UNIFIED_TYPE_MAP}")
+    print()
     for i, abacus_dir in enumerate(abacus_outputs, 1):
         dataset_name = f"conf_{abacus_dir.parent.name}"
         output_dir = temp_output / dataset_name
         
-        if convert_abacus_to_deepmd(abacus_dir, output_dir):
+        if convert_abacus_to_deepmd(abacus_dir, output_dir, type_map=UNIFIED_TYPE_MAP):
             converted_dirs.append(output_dir)
     
     print()
